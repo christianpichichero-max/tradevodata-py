@@ -113,3 +113,35 @@ class TestDateRepresentationAgnostic:
                 for r in self.DATE_ROWS]
         assert tv.as_of_filter(rows, as_of="2024-10-31")[0]["original_value"] == 383285000000
         assert tv.as_of_filter(rows, as_of="2024-11-01")[0]["original_value"] == 391035000000
+
+
+class TestCredentialSafety:
+    def test_repr_does_not_leak_the_key(self):
+        c = tv.Client(api_key="tvd_supersecret_value_abcdef123456")
+        assert "supersecret" not in repr(c)
+        assert "tvd_supe" in repr(c)  # enough to identify which key, not enough to use it
+
+    def test_str_does_not_leak_the_key(self):
+        c = tv.Client(api_key="tvd_supersecret_value_abcdef123456")
+        assert "supersecret" not in str(c)
+
+
+class TestCsvCoercion:
+    """'False' is a truthy string. Left uncoerced, every row reads as restated."""
+
+    def test_booleans_become_real_booleans(self):
+        from tradevodata.client import _coerce
+        r = _coerce({"restated": "False", "filed_reliable": "True"})
+        assert r["restated"] is False
+        assert r["filed_reliable"] is True
+
+    def test_numbers_become_numbers(self):
+        from tradevodata.client import _coerce
+        r = _coerce({"original_value": "383285000000", "fiscal_year": "2023", "lag_days": "34"})
+        assert r["original_value"] == 383285000000.0
+        assert r["fiscal_year"] == 2023 and r["lag_days"] == 34
+
+    def test_blanks_survive_untouched(self):
+        from tradevodata.client import _coerce
+        r = _coerce({"original_value": "", "lag_days": ""})
+        assert r["original_value"] == "" and r["lag_days"] == ""

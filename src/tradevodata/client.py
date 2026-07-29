@@ -69,6 +69,29 @@ def _check_as_of(as_of: str) -> str:
     return as_of
 
 
+def _coerce(row: dict[str, Any]) -> dict[str, Any]:
+    """CSV gives every column back as text. Left uncoerced, `restated` arrives as the string
+    "False" — which is TRUTHY — so `if row["restated"]:` is true for every row and a caller
+    silently concludes 100% of the dataset was restated. Numbers stay strings too and quietly
+    fail or concatenate. Both CSV paths (sample and bulk download) go through this."""
+    for key in ("original_value", "latest_value"):
+        if row.get(key) not in (None, ""):
+            try:
+                row[key] = float(row[key])
+            except (TypeError, ValueError):
+                pass
+    for key in ("fiscal_year", "lag_days", "cik"):
+        if row.get(key) not in (None, ""):
+            try:
+                row[key] = int(row[key])
+            except (TypeError, ValueError):
+                pass
+    for key in ("restated", "filed_reliable"):
+        if key in row:
+            row[key] = str(row[key]).strip().lower() == "true"
+    return row
+
+
 def _has_pandas() -> bool:
     try:
         import pandas  # noqa: F401
@@ -122,6 +145,14 @@ class Client:
     def __post_init__(self) -> None:
         self.api_key = self.api_key or os.environ.get("TRADEVODATA_API_KEY")
         self.base_url = self.base_url.rstrip("/")
+
+    def __repr__(self) -> str:
+        """Never print the key. The generated dataclass repr showed it in full, so anything
+        that logged a Client, pickled one, or rendered locals in a traceback leaked the
+        customer's credential into logs and bug reports."""
+        shown = f"{self.api_key[:8]}…" if self.api_key else None
+        return (f"Client(api_key={shown!r}, base_url={self.base_url!r}, "
+                f"timeout={self.timeout}, warn_on_flags={self.warn_on_flags})")
 
     # ------------------------------------------------------------------ internals
 
@@ -243,15 +274,18 @@ class Client:
             return {"path": path, "bytes": len(blob),
                     "rows": meta.get("x-dataset-rows"), "sha256": meta.get("x-dataset-sha256")}
         text = gzip.decompress(blob).decode("utf-8")
-        rows = list(csv.DictReader(io.StringIO(text)))
+        rows = [_coerce(r) for r in csv.DictReader(io.StringIO(text))]
         return _shape(rows, to_pandas)
 
     def health(self) -> dict:
         """Dataset liveness: row count and database reachability."""
         req = urllib.request.Request(f"{self.base_url}/v1/health",
                                      headers={"user-agent": "tradevodata-python"})
-        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.URLError as exc:
+            raise TradevoDataError(f"Could not reach {self.base_url}: {exc.reason}") from None
 
 
 def sample(to_pandas: bool | None = None):
@@ -261,24 +295,12 @@ def sample(to_pandas: bool | None = None):
     verify your join logic before paying for anything.
     """
     req = urllib.request.Request(SAMPLE_URL, headers={"user-agent": "tradevodata-python"})
-    with urllib.request.urlopen(req, timeout=120) as resp:
-        text = resp.read().decode("utf-8")
-    rows = list(csv.DictReader(io.StringIO(text)))
-    for r in rows:
-        for key in ("original_value", "latest_value"):
-            if r.get(key):
-                try:
-                    r[key] = float(r[key])
-                except ValueError:
-                    pass
-        for key in ("fiscal_year", "lag_days"):
-            if r.get(key):
-                try:
-                    r[key] = int(r[key])
-                except ValueError:
-                    pass
-        r["restated"] = str(r.get("restated", "")).lower() == "true"
-        r["filed_reliable"] = str(r.get("filed_reliable", "")).lower() == "true"
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            text = resp.read().decode("utf-8")
+    except urllib.error.URLError as exc:
+        raise TradevoDataError(f"Could not download the free sample: {exc.reason}") from None
+    rows = [_coerce(r) for r in csv.DictReader(io.StringIO(text))]
     return _shape(rows, to_pandas)
 
 

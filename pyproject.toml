@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tradevodata"
-version = "0.1.2"
+version = "0.1.3"
 description = "Point-in-time US equity fundamentals from SEC EDGAR — every value stamped with the date it became public"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -44,3 +44,5 @@ Changelog = "https://tradevodata.com/changelog"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tradevodata"]
+# PyPI advertises "Typing :: Typed"; without this marker mypy ignores the annotations.
+artifacts = ["src/tradevodata/py.typed"]
