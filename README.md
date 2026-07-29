@@ -12,9 +12,11 @@ pip install tradevodata
 ```python
 import tradevodata as tv
 
-df = tv.sample()          # 40 large caps, ~3,280 rows, CC0, no signup
-df.head()
+rows = tv.sample()        # 40 large caps, ~3,280 rows, CC0, no signup
 ```
+
+Returns a pandas `DataFrame` if pandas is installed, otherwise a plain list of dicts — so
+the line above works on a bare install. Force either shape with `to_pandas=True/False`.
 
 Same columns and the same semantics as the paid dataset, so you can write and verify your
 join logic before paying for anything.

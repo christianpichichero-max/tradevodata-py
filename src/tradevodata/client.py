@@ -69,15 +69,35 @@ def _check_as_of(as_of: str) -> str:
     return as_of
 
 
-def _rows_to_pandas(rows: Iterable[dict[str, Any]]):
+def _has_pandas() -> bool:
     try:
-        import pandas as pd
-    except ImportError as exc:  # pragma: no cover - depends on the user's env
-        raise ImportError(
-            "pandas is required for DataFrame output. Install it with "
-            "`pip install tradevodata[pandas]` or use to_pandas=False."
-        ) from exc
-    return pd.DataFrame(list(rows))
+        import pandas  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def _shape(rows: Iterable[dict[str, Any]], to_pandas: bool | None):
+    """Return a DataFrame when pandas is available, else the plain list of dicts.
+
+    to_pandas=None (the default) means "use pandas if it is installed". This package
+    advertises zero dependencies, so the documented first line has to work on a bare
+    install — defaulting to True made `tv.sample()` raise ImportError there.
+    Passing to_pandas=True explicitly still raises if pandas is genuinely missing, because
+    at that point the caller has asked for something we cannot deliver.
+    """
+    rows = list(rows)
+    if to_pandas is False:
+        return rows
+    if not _has_pandas():
+        if to_pandas is True:
+            raise ImportError(
+                "pandas was requested but is not installed. "
+                'Install it with: pip install "tradevodata[pandas]"'
+            )
+        return rows
+    import pandas as pd
+    return pd.DataFrame(rows)
 
 
 @dataclass
@@ -158,7 +178,7 @@ class Client:
         ticker: str,
         as_of: str,
         concept: str | None = None,
-        to_pandas: bool = False,
+        to_pandas: bool | None = False,
     ):
         """Latest values for ``ticker`` that were already public on ``as_of``.
 
@@ -172,9 +192,9 @@ class Client:
             params["concept"] = concept
         payload, _ = self._request("/v1/fundamentals", params)
         self._warn(payload)
-        return _rows_to_pandas(payload["fundamentals"]) if to_pandas else payload
+        return _shape(payload["fundamentals"], to_pandas) if to_pandas is not False else payload
 
-    def snapshot(self, as_of: str, concept: str | None = None, to_pandas: bool = False):
+    def snapshot(self, as_of: str, concept: str | None = None, to_pandas: bool | None = False):
         """The whole-universe cross-section as it stood on ``as_of``.
 
         One call per rebalance date — the shape a cross-sectional backtest actually wants.
@@ -187,9 +207,9 @@ class Client:
             params["concept"] = concept
         payload, _ = self._request("/v1/snapshot", params)
         self._warn(payload)
-        return _rows_to_pandas(payload["rows"]) if to_pandas else payload
+        return _shape(payload["rows"], to_pandas) if to_pandas is not False else payload
 
-    def download(self, path: str | None = None, to_pandas: bool = False):
+    def download(self, path: str | None = None, to_pandas: bool | None = False):
         """The entire dataset as one gzipped CSV.
 
         Writes to ``path`` if given. Capped at a few downloads per key per day, so cache it.
@@ -218,7 +238,7 @@ class Client:
                     "rows": meta.get("x-dataset-rows"), "sha256": meta.get("x-dataset-sha256")}
         text = gzip.decompress(blob).decode("utf-8")
         rows = list(csv.DictReader(io.StringIO(text)))
-        return _rows_to_pandas(rows) if to_pandas else rows
+        return _shape(rows, to_pandas)
 
     def health(self) -> dict:
         """Dataset liveness: row count and database reachability."""
@@ -228,7 +248,7 @@ class Client:
             return json.loads(resp.read().decode("utf-8"))
 
 
-def sample(to_pandas: bool = True):
+def sample(to_pandas: bool | None = None):
     """The free 40-company CC0 sample. No API key, no signup.
 
     Same columns and same point-in-time semantics as the paid dataset, so you can write and
@@ -253,7 +273,7 @@ def sample(to_pandas: bool = True):
                     pass
         r["restated"] = str(r.get("restated", "")).lower() == "true"
         r["filed_reliable"] = str(r.get("filed_reliable", "")).lower() == "true"
-    return _rows_to_pandas(rows) if to_pandas else rows
+    return _shape(rows, to_pandas)
 
 
 def as_of_filter(rows, as_of: str):
@@ -273,4 +293,4 @@ def as_of_filter(rows, as_of: str):
         if cur is None or str(r.get("period_end", "")) > str(cur.get("period_end", "")):
             best[key] = r
     out = sorted(best.values(), key=lambda r: (str(r.get("ticker")), str(r.get("concept"))))
-    return _rows_to_pandas(out) if is_df else out
+    return _shape(out, True) if is_df else out
