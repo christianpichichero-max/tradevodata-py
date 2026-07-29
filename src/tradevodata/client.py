@@ -97,7 +97,13 @@ def _shape(rows: Iterable[dict[str, Any]], to_pandas: bool | None):
             )
         return rows
     import pandas as pd
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+    # Real dates, not strings: a DataFrame whose date columns are objects breaks merges and
+    # comparisons in ways that fail loudly at best and skew a backtest silently at worst.
+    for col in ("period_end", "first_filed", "filed"):
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors="coerce")
+    return df
 
 
 @dataclass
@@ -285,12 +291,23 @@ def as_of_filter(rows, as_of: str):
     _check_as_of(as_of)
     is_df = hasattr(rows, "to_dict") and hasattr(rows, "columns")
     records = rows.to_dict("records") if is_df else list(rows)
-    knowable = [r for r in records if str(r.get("first_filed", "")) <= as_of]
+
+    # Normalise to YYYY-MM-DD before comparing. Comparing raw values would mean a caller who
+    # parsed the date columns (or used a DataFrame, which now parses them) got a different
+    # answer than one who left them as strings — a silent off-by-one-year in a
+    # point-in-time join is the exact bug this library exists to prevent.
+    def day(v) -> str:
+        if v is None:
+            return ""
+        s = getattr(v, "isoformat", None)
+        return (s() if callable(s) else str(v))[:10]
+
+    knowable = [r for r in records if day(r.get("first_filed")) and day(r.get("first_filed")) <= as_of]
     best: dict[tuple, dict] = {}
     for r in knowable:
         key = (r.get("ticker"), r.get("concept"))
         cur = best.get(key)
-        if cur is None or str(r.get("period_end", "")) > str(cur.get("period_end", "")):
+        if cur is None or day(r.get("period_end")) > day(cur.get("period_end")):
             best[key] = r
     out = sorted(best.values(), key=lambda r: (str(r.get("ticker")), str(r.get("concept"))))
     return _shape(out, True) if is_df else out

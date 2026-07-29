@@ -1,5 +1,7 @@
 # tradevodata
 
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/christianpichichero-max/tradevodata-py/blob/main/examples/lookahead_bias_demo.ipynb)
+
 Point-in-time US equity fundamentals from SEC EDGAR. Every value carries the date it actually
 became public, so a backtest can only see what was knowable at the time.
 
@@ -97,6 +99,13 @@ Standard library only. `pandas` is opt-in:
 ```bash
 pip install "tradevodata[pandas]"
 ```
+
+## See the bug for yourself
+
+The [Colab notebook](examples/lookahead_bias_demo.ipynb) runs the experiment on the free
+sample — no key, no signup, no install. It joins fundamentals both ways at every month-end
+and counts the disagreements. On the 40-company sample: **47 of 413 ticker-months (11%) use a
+revenue number that was not yet public.**
 
 ## Links
 

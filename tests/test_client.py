@@ -74,3 +74,42 @@ class TestAsOfFilter:
     def test_rejects_bad_as_of(self):
         with pytest.raises(ValueError):
             tv.as_of_filter(self.ROWS, as_of="not-a-date")
+
+
+class TestDateRepresentationAgnostic:
+    """A parsed date and a string date must produce the SAME point-in-time answer.
+
+    Before this, sample() handed back strings while a pandas user would naturally parse them,
+    and as_of_filter compared raw values — so the two callers could get fiscal years a full
+    year apart from identical data. A silent off-by-one in a PIT join is precisely the bug
+    this library exists to prevent, so it is worth a test of its own.
+    """
+
+    import datetime as _dt
+
+    STR_ROWS = [
+        {"ticker": "AAPL", "concept": "Revenue", "period_end": "2023-09-30",
+         "first_filed": "2023-11-03", "original_value": 383285000000},
+        {"ticker": "AAPL", "concept": "Revenue", "period_end": "2024-09-28",
+         "first_filed": "2024-11-01", "original_value": 391035000000},
+    ]
+    DATE_ROWS = [
+        {"ticker": "AAPL", "concept": "Revenue", "period_end": _dt.date(2023, 9, 30),
+         "first_filed": _dt.date(2023, 11, 3), "original_value": 383285000000},
+        {"ticker": "AAPL", "concept": "Revenue", "period_end": _dt.date(2024, 9, 28),
+         "first_filed": _dt.date(2024, 11, 1), "original_value": 391035000000},
+    ]
+
+    def test_strings_and_dates_agree(self):
+        a = tv.as_of_filter(self.STR_ROWS, as_of="2024-06-30")
+        b = tv.as_of_filter(self.DATE_ROWS, as_of="2024-06-30")
+        assert len(a) == len(b) == 1
+        assert a[0]["original_value"] == b[0]["original_value"] == 383285000000
+
+    def test_datetimes_respect_the_filing_boundary(self):
+        import datetime as dt
+        rows = [{**r, "first_filed": dt.datetime.combine(r["first_filed"], dt.time(0)),
+                 "period_end": dt.datetime.combine(r["period_end"], dt.time(0))}
+                for r in self.DATE_ROWS]
+        assert tv.as_of_filter(rows, as_of="2024-10-31")[0]["original_value"] == 383285000000
+        assert tv.as_of_filter(rows, as_of="2024-11-01")[0]["original_value"] == 391035000000
