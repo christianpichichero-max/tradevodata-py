@@ -5,6 +5,13 @@
 Point-in-time US equity fundamentals from SEC EDGAR. Every value carries the date it actually
 became public, so a backtest can only see what was knowable at the time.
 
+## See the bug before installing anything
+
+The no-signup Colab experiment joins the same fundamentals two ways. The ordinary
+period-end join uses a value that was **not public yet in 47 of 413 ticker-months (11%)**.
+The point-in-time join removes those future values. [Run the 3-minute proof in
+Colab](https://colab.research.google.com/github/christianpichichero-max/tradevodata-py/blob/main/examples/lookahead_bias_demo.ipynb).
+
 ```bash
 pip install tradevodata
 ```
@@ -107,9 +114,35 @@ sample — no key, no signup, no install. It joins fundamentals both ways at eve
 and counts the disagreements. On the 40-company sample: **47 of 413 ticker-months (11%) use a
 revenue number that was not yet public.**
 
+## Audit another provider
+
+If you already have a fundamentals CSV, the local audit checks whether it exposes a real
+availability date and whether revised values appear where the free sample recorded a
+different first-reported value:
+
+```bash
+python examples/audit_provider_csv.py provider.csv \
+  --ticker-col ticker --concept-col concept --period-end-col period_end \
+  --value-col value --available-col filed
+```
+
+Nothing is uploaded. The script runs locally and explains every check it can and cannot
+verify.
+
+## Build a point-in-time factor snapshot
+
+```bash
+pip install "tradevodata[pandas]"
+python examples/point_in_time_factor.py --as-of 2024-06-30
+```
+
+This produces margins and return-on-capital measures using only annual values that had been
+filed by the requested date.
+
 ## Links
 
-- Docs — https://tradevodata.com/docs
+- Product — https://tradevodata.com/?utm_source=github&utm_medium=repo&utm_campaign=python-client
+- Docs — https://tradevodata.com/docs?utm_source=github&utm_medium=repo&utm_campaign=python-client
 - Free CC0 sample — https://github.com/christianpichichero-max/pit-fundamentals
 - Methodology — how each number is derived from raw filings, so you can check any row
 
