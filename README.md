@@ -5,6 +5,13 @@
 Point-in-time US equity fundamentals from SEC EDGAR. Every value carries the date it actually
 became public, so a backtest can only see what was knowable at the time.
 
+## See the bug before installing anything
+
+The no-signup Colab experiment joins the same fundamentals two ways. The ordinary
+period-end join uses a value that was **not public yet in 47 of 413 ticker-months (11%)**.
+The point-in-time join removes those future values. [Run the 3-minute proof in
+Colab](https://colab.research.google.com/github/christianpichichero-max/tradevodata-py/blob/main/examples/lookahead_bias_demo.ipynb).
+
 ```bash
 pip install tradevodata
 ```
@@ -14,7 +21,7 @@ pip install tradevodata
 ```python
 import tradevodata as tv
 
-rows = tv.sample()        # 40 large caps, 3,280 rows as of 2026-08-03, CC0, no signup
+rows = tv.sample()        # 40 large caps, ~3,280 rows, CC0, no signup
 ```
 
 Returns a pandas `DataFrame` if pandas is installed, otherwise a plain list of dicts — so
@@ -84,13 +91,10 @@ yourself.
 
 - **Annual only** (10-K and 10-K/A). Quarterly is on the roadmap, not shipped.
 - **US only**, and **no delisted companies** — so mind survivorship bias if you build universes
-  from this alone. This dataset addresses lookahead bias; survivorship is a different problem.
+  from this alone. We fix lookahead bias; that is a different problem.
 - 7 concepts, up to 12 fiscal years.
-- Filing lag across the universe: mean 66, median 60, 90th percentile 90 days on reliable rows
-  (rows are QA-capped at 120), measured 2026-07-23 — live figures on the
-  [status page](https://tradevodata.com/status?utm_source=pypi&utm_medium=readme). The
-  40-company sample averages 43 — large caps file fastest, so the sample is *better* than the
-  whole.
+- Filing lag averages 66 days across the universe (median 60, max 120). The 40-company sample
+  averages 43 — large caps file fastest, so the sample is *better* than the whole.
 
 If you need quarterly, delisted coverage, or breadth today, [Sharadar](https://data.nasdaq.com)
 is genuinely good and you should buy that instead.
@@ -110,13 +114,37 @@ sample — no key, no signup, no install. It joins fundamentals both ways at eve
 and counts the disagreements. On the 40-company sample: **47 of 413 ticker-months (11%) use a
 revenue number that was not yet public.**
 
+## Audit another provider
+
+If you already have a fundamentals CSV, the local audit checks whether it exposes a real
+availability date and whether revised values appear where the free sample recorded a
+different first-reported value:
+
+```bash
+python examples/audit_provider_csv.py provider.csv \
+  --ticker-col ticker --concept-col concept --period-end-col period_end \
+  --value-col value --available-col filed
+```
+
+Nothing is uploaded. The script runs locally and explains every check it can and cannot
+verify.
+
+## Build a point-in-time factor snapshot
+
+```bash
+pip install "tradevodata[pandas]"
+python examples/point_in_time_factor.py --as-of 2024-06-30
+```
+
+This produces margins and return-on-capital measures using only annual values that had been
+filed by the requested date.
+
 ## Links
 
-- Docs — https://tradevodata.com/docs?utm_source=pypi&utm_medium=readme
+- Product — https://tradevodata.com/?utm_source=github&utm_medium=repo&utm_campaign=python-client
+- Docs — https://tradevodata.com/docs?utm_source=github&utm_medium=repo&utm_campaign=python-client
 - Free CC0 sample — https://github.com/christianpichichero-max/pit-fundamentals
-- Sample page (browse the data before installing anything) — https://tradevodata.com/sample?utm_source=pypi&utm_medium=readme
-- Live dataset totals — https://tradevodata.com/status?utm_source=pypi&utm_medium=readme
-- [Methodology](https://github.com/christianpichichero-max/pit-fundamentals/blob/main/METHODOLOGY.md) — how each number is derived from raw filings, so you can check any row
+- Methodology — how each number is derived from raw filings, so you can check any row
 
 MIT licensed. Data sourced from SEC EDGAR (public domain). This is a dataset, not investment
 advice.
