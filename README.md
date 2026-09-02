@@ -14,7 +14,7 @@ pip install tradevodata
 ```python
 import tradevodata as tv
 
-rows = tv.sample()        # 40 large caps, ~3,280 rows, CC0, no signup
+rows = tv.sample()        # 40 large caps, 3,280 rows as of 2026-08-03, CC0, no signup
 ```
 
 Returns a pandas `DataFrame` if pandas is installed, otherwise a plain list of dicts — so
@@ -84,10 +84,13 @@ yourself.
 
 - **Annual only** (10-K and 10-K/A). Quarterly is on the roadmap, not shipped.
 - **US only**, and **no delisted companies** — so mind survivorship bias if you build universes
-  from this alone. We fix lookahead bias; that is a different problem.
+  from this alone. This dataset addresses lookahead bias; survivorship is a different problem.
 - 7 concepts, up to 12 fiscal years.
-- Filing lag averages 66 days across the universe (median 60, max 120). The 40-company sample
-  averages 43 — large caps file fastest, so the sample is *better* than the whole.
+- Filing lag across the universe: mean 66, median 60, 90th percentile 90 days on reliable rows
+  (rows are QA-capped at 120), measured 2026-07-23 — live figures on the
+  [status page](https://tradevodata.com/status?utm_source=pypi&utm_medium=readme). The
+  40-company sample averages 43 — large caps file fastest, so the sample is *better* than the
+  whole.
 
 If you need quarterly, delisted coverage, or breadth today, [Sharadar](https://data.nasdaq.com)
 is genuinely good and you should buy that instead.
@@ -109,9 +112,11 @@ revenue number that was not yet public.**
 
 ## Links
 
-- Docs — https://tradevodata.com/docs
+- Docs — https://tradevodata.com/docs?utm_source=pypi&utm_medium=readme
 - Free CC0 sample — https://github.com/christianpichichero-max/pit-fundamentals
-- Methodology — how each number is derived from raw filings, so you can check any row
+- Sample page (browse the data before installing anything) — https://tradevodata.com/sample?utm_source=pypi&utm_medium=readme
+- Live dataset totals — https://tradevodata.com/status?utm_source=pypi&utm_medium=readme
+- [Methodology](https://github.com/christianpichichero-max/pit-fundamentals/blob/main/METHODOLOGY.md) — how each number is derived from raw filings, so you can check any row
 
 MIT licensed. Data sourced from SEC EDGAR (public domain). This is a dataset, not investment
 advice.
