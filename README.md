@@ -37,7 +37,8 @@ import tradevodata as tv
 
 client = tv.Client(api_key="tvd_...")     # or set TRADEVODATA_API_KEY
 
-client.fundamentals("AAPL", as_of="2024-06-30")
+client.fundamentals("AAPL", as_of="2024-06-30")  # annual (default)
+client.fundamentals("AAPL", as_of="2024-06-30", period="quarterly")
 ```
 
 There is no way to ask this library "what is Apple's revenue?" — only "what was Apple's
@@ -50,13 +51,16 @@ had not been filed yet. That distinction is the entire product, and a default va
 One call per rebalance date, instead of looping tickers:
 
 ```python
-snap = client.snapshot(as_of="2024-06-30", concept="Revenue", to_pandas=True)
+snap = client.snapshot(
+    as_of="2024-06-30", concept="Revenue", period="quarterly", to_pandas=True
+)
 ```
 
 ## Bulk
 
 ```python
-client.download("tradevodata.csv.gz")     # entire dataset, one file
+client.download("tradevodata_annual.csv.gz")
+client.download("tradevodata_quarterly.csv.gz", period="quarterly")
 ```
 
 ## Doing the point-in-time join yourself
@@ -82,6 +86,10 @@ ticker/concept. That is the same logic the API applies server-side.
 | `restated` | a later filing revised this by more than 0.5% |
 | `lag_days` | days from period end to first publication |
 | `qa_status` | `clean`, or `FLAG:` + reasons. We flag; we never silently drop |
+| `fiscal_period` | `FY` for annual rows; `Q1`–`Q4` for quarterly rows |
+| `period_start` | start of a quarterly duration; null for instant concepts |
+| `ytd_value` | source year-to-date value when a discrete quarter is derived |
+| `derivation` | `reported`, `ytd_diff`, or `fy_minus_9m` |
 
 The client raises a `UserWarning` when rows come back flagged or when your `as_of` runs past
 our data cutoff. Silence it with `Client(warn_on_flags=False)` if you're handling `qa_status`
@@ -89,15 +97,18 @@ yourself.
 
 ## Honest limits
 
-- **Annual only** (10-K and 10-K/A). Quarterly is on the roadmap, not shipped.
+- Annual data comes from 10-K/10-K/A filings. Quarterly data is requested explicitly with
+  `period="quarterly"` and includes accepted 10-Q/10-Q/A facts plus supported Q4 derivations.
+- Quarterly depth varies by filer and tag availability; do not assume every company has 48 quarters.
 - **US only**, and **no delisted companies** — so mind survivorship bias if you build universes
   from this alone. We fix lookahead bias; that is a different problem.
-- 7 concepts, up to 12 fiscal years.
+- 16 annual concepts and 7 quarterly concepts, with up to 12 fiscal years of history where
+  SEC XBRL coverage supports it.
 - Filing lag averages 66 days across the universe (median 60, max 120). The 40-company sample
   averages 43 — large caps file fastest, so the sample is *better* than the whole.
 
-If you need quarterly, delisted coverage, or breadth today, [Sharadar](https://data.nasdaq.com)
-is genuinely good and you should buy that instead.
+If you need delisted coverage or a survivorship-bias-free historical universe, this dataset does
+not provide it; use a provider that explicitly includes inactive securities.
 
 ## Zero dependencies
 
