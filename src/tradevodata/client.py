@@ -28,7 +28,7 @@ SAMPLE_URL = (
     "https://raw.githubusercontent.com/christianpichichero-max/"
     "pit-fundamentals/main/data/pit_fundamentals_history.csv"
 )
-CONCEPTS = (
+QUARTERLY_CONCEPTS = (
     "Revenue",
     "NetIncome",
     "Assets",
@@ -37,6 +37,20 @@ CONCEPTS = (
     "EPSDiluted",
     "DilutedShares",
 )
+ANNUAL_CONCEPTS = QUARTERLY_CONCEPTS + (
+    "GrossProfit",
+    "OperatingIncome",
+    "PretaxIncome",
+    "IncomeTaxExpense",
+    "CapitalExpenditures",
+    "CashAndCashEquivalents",
+    "CurrentAssets",
+    "CurrentLiabilities",
+    "NetPPE",
+)
+# Backwards-compatible module constant: annual remains the default cadence.
+CONCEPTS = ANNUAL_CONCEPTS
+PERIODS = ("annual", "quarterly")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
@@ -67,6 +81,28 @@ def _check_as_of(as_of: str) -> str:
             "every value this API returns is scoped to what was public on that date."
         )
     return as_of
+
+
+def _check_period(period: str) -> str:
+    if not isinstance(period, str) or period not in PERIODS:
+        raise ValueError(f"period must be one of {PERIODS}, got {period!r}")
+    return period
+
+
+def _check_concept(concept: str | None, period: str) -> None:
+    allowed = QUARTERLY_CONCEPTS if period == "quarterly" else ANNUAL_CONCEPTS
+    if concept is not None and concept not in allowed:
+        raise ValueError(f"concept must be one of {allowed} for period={period!r}, got {concept!r}")
+
+
+def _require_period_echo(actual: Any, expected: str, endpoint: str) -> None:
+    """Refuse cadence-ambiguous responses from old or misconfigured servers."""
+    if actual != expected:
+        shown = "missing" if actual is None else repr(actual)
+        raise TradevoDataError(
+            f"{endpoint} did not confirm period={expected!r} (received {shown}). "
+            "The response may be from an incompatible Tradevo Data server; no data was returned."
+        )
 
 
 def _coerce(row: dict[str, Any]) -> dict[str, Any]:
@@ -216,51 +252,66 @@ class Client:
         as_of: str,
         concept: str | None = None,
         to_pandas: bool | None = False,
+        period: str = "annual",
     ):
         """Latest values for ``ticker`` that were already public on ``as_of``.
 
         ``as_of`` is required: this returns what was knowable that day, not today's numbers.
         """
         _check_as_of(as_of)
-        if concept is not None and concept not in CONCEPTS:
-            raise ValueError(f"concept must be one of {CONCEPTS}, got {concept!r}")
-        params = {"ticker": ticker.upper(), "as_of": as_of}
+        _check_period(period)
+        _check_concept(concept, period)
+        params = {"ticker": ticker.upper(), "as_of": as_of, "period": period}
         if concept:
             params["concept"] = concept
         payload, _ = self._request("/v1/fundamentals", params)
+        _require_period_echo(payload.get("period"), period, "/v1/fundamentals")
         self._warn(payload)
         return _shape(payload["fundamentals"], to_pandas) if to_pandas is not False else payload
 
-    def snapshot(self, as_of: str, concept: str | None = None, to_pandas: bool | None = False):
+    def snapshot(
+        self,
+        as_of: str,
+        concept: str | None = None,
+        to_pandas: bool | None = False,
+        period: str = "annual",
+    ):
         """The whole-universe cross-section as it stood on ``as_of``.
 
         One call per rebalance date — the shape a cross-sectional backtest actually wants.
         """
         _check_as_of(as_of)
-        if concept is not None and concept not in CONCEPTS:
-            raise ValueError(f"concept must be one of {CONCEPTS}, got {concept!r}")
-        params = {"as_of": as_of}
+        _check_period(period)
+        _check_concept(concept, period)
+        params = {"as_of": as_of, "period": period}
         if concept:
             params["concept"] = concept
         payload, _ = self._request("/v1/snapshot", params)
+        _require_period_echo(payload.get("period"), period, "/v1/snapshot")
         self._warn(payload)
         return _shape(payload["rows"], to_pandas) if to_pandas is not False else payload
 
-    def download(self, path: str | None = None, to_pandas: bool | None = False):
+    def download(
+        self,
+        path: str | None = None,
+        to_pandas: bool | None = False,
+        period: str = "annual",
+    ):
         """The entire dataset as one gzipped CSV.
 
         Writes to ``path`` if given. Capped at a few downloads per key per day, so cache it.
         """
+        _check_period(period)
         if not self.api_key:
             raise AuthError("No API key. Set TRADEVODATA_API_KEY or pass Client(api_key=...).")
         req = urllib.request.Request(
-            f"{self.base_url}/v1/download",
+            f"{self.base_url}/v1/download?" + urllib.parse.urlencode({"period": period}),
             headers={"x-api-key": self.api_key, "user-agent": "tradevodata-python"},
         )
         try:
             with urllib.request.urlopen(req, timeout=max(self.timeout, 300)) as resp:
                 blob = resp.read()
-                meta = dict(resp.headers)
+                meta = {key.lower(): value for key, value in resp.headers.items()}
         except urllib.error.HTTPError as exc:
             body = exc.read().decode("utf-8", "replace")
             if exc.code == 429:
@@ -268,6 +319,7 @@ class Client:
             if exc.code in (401, 403):
                 raise AuthError(body) from None
             raise TradevoDataError(f"HTTP {exc.code}: {body}") from None
+        _require_period_echo(meta.get("x-dataset-period"), period, "/v1/download")
         if path:
             with open(path, "wb") as fh:
                 fh.write(blob)

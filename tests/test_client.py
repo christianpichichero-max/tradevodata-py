@@ -3,7 +3,7 @@
 import pytest
 
 import tradevodata as tv
-from tradevodata.client import _check_as_of
+from tradevodata.client import _check_as_of, _check_period
 
 
 class TestAsOfIsRequired:
@@ -44,6 +44,148 @@ class TestConceptValidation:
         client = tv.Client(api_key="tvd_x")
         with pytest.raises(ValueError, match="concept must be one of"):
             client.fundamentals("AAPL", as_of="2024-06-30", concept="Ebitda")
+
+    def test_expanded_annual_concept_is_accepted(self, monkeypatch):
+        client = tv.Client(api_key="tvd_x")
+        monkeypatch.setattr(
+            client,
+            "_request",
+            lambda path, params: ({"period": "annual", "fundamentals": []}, {}),
+        )
+        payload = client.fundamentals(
+            "AAPL", as_of="2024-06-30", concept="GrossProfit"
+        )
+        assert payload["period"] == "annual"
+
+    def test_annual_only_concept_is_rejected_for_quarterly(self):
+        client = tv.Client(api_key="tvd_x")
+        with pytest.raises(ValueError, match="period='quarterly'"):
+            client.fundamentals(
+                "AAPL",
+                as_of="2024-06-30",
+                concept="GrossProfit",
+                period="quarterly",
+            )
+
+
+class TestPeriodContract:
+    def test_rejects_unknown_period_before_any_request(self):
+        client = tv.Client(api_key="tvd_x")
+        with pytest.raises(ValueError, match="period must be one of"):
+            client.fundamentals("AAPL", as_of="2024-06-30", period="monthly")
+
+    def test_period_is_case_sensitive_to_avoid_ambiguous_client_calls(self):
+        with pytest.raises(ValueError):
+            _check_period("QUARTERLY")
+
+    def test_fundamentals_sends_and_requires_quarterly_echo(self, monkeypatch):
+        client = tv.Client(api_key="tvd_x")
+        seen = {}
+
+        def fake_request(path, params):
+            seen.update(path=path, params=params)
+            return {"period": "quarterly", "fundamentals": []}, {}
+
+        monkeypatch.setattr(client, "_request", fake_request)
+        payload = client.fundamentals(
+            "aapl", as_of="2024-06-30", period="quarterly"
+        )
+        assert payload["period"] == "quarterly"
+        assert seen == {
+            "path": "/v1/fundamentals",
+            "params": {"ticker": "AAPL", "as_of": "2024-06-30", "period": "quarterly"},
+        }
+
+    def test_snapshot_defaults_to_annual_and_requires_echo(self, monkeypatch):
+        client = tv.Client(api_key="tvd_x")
+        seen = {}
+
+        def fake_request(path, params):
+            seen.update(path=path, params=params)
+            return {"period": "annual", "rows": []}, {}
+
+        monkeypatch.setattr(client, "_request", fake_request)
+        payload = client.snapshot(as_of="2024-06-30")
+        assert payload["period"] == "annual"
+        assert seen["params"]["period"] == "annual"
+
+    @pytest.mark.parametrize("echo", [None, "annual"])
+    def test_quarterly_response_missing_or_wrong_echo_is_refused(self, monkeypatch, echo):
+        client = tv.Client(api_key="tvd_x")
+        monkeypatch.setattr(
+            client,
+            "_request",
+            lambda path, params: ({"period": echo, "fundamentals": []}, {}),
+        )
+        with pytest.raises(tv.TradevoDataError, match="did not confirm period='quarterly'"):
+            client.fundamentals("AAPL", as_of="2024-06-30", period="quarterly")
+
+    def test_existing_fourth_positional_argument_remains_to_pandas(self, monkeypatch):
+        client = tv.Client(api_key="tvd_x")
+        monkeypatch.setattr(
+            client,
+            "_request",
+            lambda path, params: ({"period": "annual", "fundamentals": []}, {}),
+        )
+        payload = client.fundamentals("AAPL", "2024-06-30", None, False)
+        assert payload["period"] == "annual"
+
+    def test_download_sends_period_and_requires_header_echo(self, monkeypatch):
+        import gzip
+
+        csv_blob = gzip.compress(
+            b"ticker,original_value,restated\nAAPL,10,False\n"
+        )
+        seen = {}
+
+        class Response:
+            headers = {
+                "X-Dataset-Period": "quarterly",
+                "X-Dataset-Rows": "1",
+                "X-Dataset-Sha256": "abc",
+            }
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return csv_blob
+
+        def fake_urlopen(request, timeout):
+            seen["url"] = request.full_url
+            return Response()
+
+        monkeypatch.setattr("tradevodata.client.urllib.request.urlopen", fake_urlopen)
+        rows = tv.Client(api_key="tvd_x").download(period="quarterly", to_pandas=False)
+        assert seen["url"].endswith("/v1/download?period=quarterly")
+        assert rows[0]["original_value"] == 10.0
+        assert rows[0]["restated"] is False
+
+    def test_download_does_not_write_mismatched_cadence(self, monkeypatch, tmp_path):
+        destination = tmp_path / "quarterly.csv.gz"
+
+        class Response:
+            headers = {"X-Dataset-Period": "annual"}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return b"not written"
+
+        monkeypatch.setattr(
+            "tradevodata.client.urllib.request.urlopen",
+            lambda request, timeout: Response(),
+        )
+        with pytest.raises(tv.TradevoDataError, match="did not confirm period='quarterly'"):
+            tv.Client(api_key="tvd_x").download(str(destination), period="quarterly")
+        assert not destination.exists()
 
 
 class TestAsOfFilter:
