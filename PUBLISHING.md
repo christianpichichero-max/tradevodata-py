@@ -1,49 +1,37 @@
 # Publishing to PyPI
 
-The package is built, tested and on GitHub. Publishing needs a PyPI account, which is yours
-to create — it's tied to your identity as the author.
+Releases use PyPI Trusted Publishing through `.github/workflows/release.yml`. GitHub receives
+a short-lived credential for the `tradevodata` project; there is no long-lived PyPI token to
+store or rotate.
 
-## One-time setup (~5 min)
+## One-time PyPI setup
 
-1. Create an account: https://pypi.org/account/register/ (verify the email)
-2. Enable 2FA when prompted — PyPI requires it for publishing.
-3. Create an API token: https://pypi.org/manage/account/token/
-   - Scope: **"Entire account"** for the first upload (you can narrow it to the
-     `tradevodata` project afterwards).
-   - Copy the token — it's shown once and starts with `pypi-`.
+In the existing `tradevodata` project's **Publishing** settings, add a GitHub Actions trusted
+publisher with these exact values:
 
-## Publish
+- Owner: `christianpichichero-max`
+- Repository: `tradevodata-py`
+- Workflow: `release.yml`
+- Environment: `pypi`
 
-From `~/tradevodata-py`:
+The GitHub `pypi` environment must also exist before a release is dispatched.
 
-```bash
-python3 -m twine upload dist/*
-```
+## Release checklist
 
-- Username: `__token__`
-- Password: paste the `pypi-...` token
+1. Bump `version` in `pyproject.toml` and `__version__` in
+   `src/tradevodata/__init__.py`; keep them identical.
+2. Merge the change to `main` after the Python client CI passes.
+3. Publish a GitHub release tagged `v<version>` from that exact `main` commit.
+4. Confirm the **Publish Python package** workflow passed.
+5. Verify the release from a clean environment:
 
-Takes about 10 seconds. Then `pip install tradevodata` works for anyone, anywhere.
+   ```bash
+   python3 -m venv /tmp/tradevodata-release-check
+   /tmp/tradevodata-release-check/bin/pip install tradevodata
+   /tmp/tradevodata-release-check/bin/python -c \
+     "import tradevodata as tv; print(tv.__version__)"
+   ```
 
-## Test it worked
-
-```bash
-python3 -m venv /tmp/t && /tmp/t/bin/pip install tradevodata
-/tmp/t/bin/python -c "import tradevodata as tv; print(len(tv.sample(to_pandas=False)), 'rows')"
-```
-
-## Releasing a new version later
-
-1. Bump `version` in `pyproject.toml` **and** `__version__` in `src/tradevodata/__init__.py`
-   (keep them identical).
-2. `rm -rf dist/ && python3 -m build && python3 -m twine check dist/*`
-3. `python3 -m twine upload dist/*`
-
-PyPI will not let you overwrite a version that already exists, so every upload needs a new
-number.
-
-## After the first publish
-
-Tell me and I'll add the install line to the site docs and README. Until it's actually live I
-am deliberately not advertising `pip install tradevodata` anywhere — claiming an install
-command that 404s is exactly the kind of thing this brand can't afford.
+The workflow reruns the full test suite, builds both artifacts, validates their metadata,
+then passes only those artifacts to the minimally privileged publishing job. PyPI refuses
+overwriting an existing version, so every release needs a new version number.
