@@ -196,7 +196,7 @@ class Client:
         if not self.api_key:
             raise AuthError(
                 "No API key. Pass Client(api_key=...) or set TRADEVODATA_API_KEY. "
-                "The free 40-company sample needs no key — use tradevodata.sample()."
+                "The public 5-company proof pack needs no key — use tradevodata.sample()."
             )
         url = f"{self.base_url}{path}"
         if params:
@@ -341,7 +341,7 @@ class Client:
 
 
 def sample(to_pandas: bool | None = None):
-    """The free 40-company CC0 sample. No API key, no signup.
+    """The public 5-company, 3-fiscal-year CC0 proof pack. No API key, no signup.
 
     Same columns and same point-in-time semantics as the paid dataset, so you can write and
     verify your join logic before paying for anything.
@@ -351,7 +351,7 @@ def sample(to_pandas: bool | None = None):
         with urllib.request.urlopen(req, timeout=120) as resp:
             text = resp.read().decode("utf-8")
     except urllib.error.URLError as exc:
-        raise TradevoDataError(f"Could not download the free sample: {exc.reason}") from None
+        raise TradevoDataError(f"Could not download the public proof pack: {exc.reason}") from None
     rows = [_coerce(r) for r in csv.DictReader(io.StringIO(text))]
     return _shape(rows, to_pandas)
 
