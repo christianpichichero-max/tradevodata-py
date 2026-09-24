@@ -141,7 +141,7 @@ def audit(args: argparse.Namespace) -> int:
 
     print("Point-in-time provider audit")
     print(f"  Provider rows: {len(provider):,}")
-    print(f"  Rows overlapping the 40-company sample: {overlap:,}")
+    print(f"  Rows overlapping the 5-company proof pack: {overlap:,}")
     if invalid_values:
         print(f"  Rows with an unreadable value: {invalid_values:,}")
 

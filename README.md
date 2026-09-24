@@ -8,7 +8,7 @@ became public, so a backtest can only see what was knowable at the time.
 ## See the bug before installing anything
 
 The no-signup Colab experiment joins the same fundamentals two ways. The ordinary
-period-end join uses a value that was **not public yet in 47 of 413 ticker-months (11%)**.
+period-end join uses a value that was **not public yet in 14 of 85 ticker-months (16%)**.
 The point-in-time join removes those future values. [Run the 3-minute proof in
 Colab](https://colab.research.google.com/github/christianpichichero-max/tradevodata-py/blob/main/examples/lookahead_bias_demo.ipynb).
 
@@ -16,12 +16,12 @@ Colab](https://colab.research.google.com/github/christianpichichero-max/tradevod
 pip install tradevodata
 ```
 
-## The free sample needs no key
+## The public proof pack needs no key
 
 ```python
 import tradevodata as tv
 
-rows = tv.sample()        # 40 large caps, ~3,280 rows, CC0, no signup
+rows = tv.sample()        # 5 companies, latest 3 fiscal years, 225 rows, CC0
 ```
 
 Returns a pandas `DataFrame` if pandas is installed, otherwise a plain list of dicts — so
@@ -104,8 +104,8 @@ yourself.
   from this alone. We fix lookahead bias; that is a different problem.
 - 16 annual concepts and 7 quarterly concepts, with up to 12 fiscal years of history where
   SEC XBRL coverage supports it.
-- Filing lag averages 66 days across the universe (median 60, max 120). The 40-company sample
-  averages 43 — large caps file fastest, so the sample is *better* than the whole.
+- Filing lag averages 66 days across the universe (median 60, p90 90; reliable rows are
+  QA-capped at 120). The 5-company proof pack averages 35.2 days and is not a proxy for the universe.
 
 If you need delisted coverage or a survivorship-bias-free historical universe, this dataset does
 not provide it; use a provider that explicitly includes inactive securities.
@@ -120,15 +120,15 @@ pip install "tradevodata[pandas]"
 
 ## See the bug for yourself
 
-The [Colab notebook](examples/lookahead_bias_demo.ipynb) runs the experiment on the free
-sample — no key, no signup, no install. It joins fundamentals both ways at every month-end
-and counts the disagreements. On the 40-company sample: **47 of 413 ticker-months (11%) use a
+The [Colab notebook](examples/lookahead_bias_demo.ipynb) runs the experiment on the public
+proof pack—no key, no signup, no install. It joins fundamentals both ways at every month-end
+and counts the disagreements. On the 5-company proof pack: **14 of 85 ticker-months (16%) use a
 revenue number that was not yet public.**
 
 ## Audit another provider
 
 If you already have a fundamentals CSV, the local audit checks whether it exposes a real
-availability date and whether revised values appear where the free sample recorded a
+availability date and whether revised values appear where the proof pack recorded a
 different first-reported value:
 
 ```bash
